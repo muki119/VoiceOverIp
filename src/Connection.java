@@ -9,6 +9,7 @@ public class Connection {
     private int port;
     private boolean listening = false;
     private boolean acknowledged = false;
+    private SecurityLayer securityLayer = new SecurityLayer();
 
     public Connection(String ip, int port) {
         try{
@@ -115,8 +116,6 @@ public class Connection {
             }
         }).start();
 
-
-
     }
     private void handshake(){
 
@@ -141,7 +140,6 @@ public class Connection {
                         this.acknowledged = true;
                         sendData("ACK".getBytes());
 
-                        //generate your own key 
 
                         System.out.println("HELLO");
                     }else if(incomingEvent.equals("ACK")){ // if the other side acknowledges - you are now peer A
