@@ -118,6 +118,7 @@ public class Connection {
 
     }
     private void handshake(){
+        SecurityLayer securityLayer = new SecurityLayer(); 
 
         new Thread(()->{
             while(!this.acknowledged){
@@ -142,11 +143,33 @@ public class Connection {
 
 
                         System.out.println("HELLO");
+                        
+                        sendData("AUTH_REQUEST".getBytes()); //starting authentication
+
                     }else if(incomingEvent.equals("ACK")){ // if the other side acknowledges - you are now peer A
                         this.acknowledged = true;
                         //do diffie helman
                         System.out.println("ACK");
+                        
+                        sendData("AUTH_REQUEST".getBytes()); //starting authentication
+                        
                     }
+                    else if (incomingEvent.equals("AUTH_REQUEST")){
+                        //if AUTH_REQUEST is received, send authentication key
+                        sendData(("AUTH " + SecurityLayer.SHARED_SECRET).getBytes());
+                    }
+                    
+                    else if (incomingEvent.startsWith("AUTH ")){
+                        //if authentication key is receieved, verify it
+                        String receivedKey = incomingEvent.split(" ")[1];
+                        if (securityLayer.authenticate(receivedKey)){
+                            this.acknowledged = true;
+                            System.out.println("Authenticated successfully");
+                        }
+                        else{
+                            System.out.println("Authentication failed. Closing the connection");
+                            socket.close();
+                        }                    
                 }catch (IOException e){
                     System.out.println("Error receiving data");
                     e.printStackTrace();
