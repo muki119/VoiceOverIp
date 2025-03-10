@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.math.BigInteger;
 import java.net.*;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
@@ -34,7 +35,7 @@ public class Connection {
         new Thread(()->{
             try{
                 //transform data through layers.
-                System.out.println("Sending to " + this.ip+" On port "+this.port+" "+new String(data));
+//                System.out.println("Sending to " + this.ip+" On port "+this.port+" "+new String(data));
                 DatagramPacket dataPacket = new DatagramPacket(data, data.length, this.ip, this.port);
                 socket.send(dataPacket);
             }catch ( IOException e){
@@ -47,7 +48,6 @@ public class Connection {
         // listen to incoming
         try{
             this.socket = new DatagramSocket(port);
-            boolean acknowledged = false;
             Thread socketListenerThread = new Thread(()->{
                 System.out.println("Listening on port "+port);
                 while (this.listening){
@@ -62,6 +62,11 @@ public class Connection {
                 
             });
             handshake();
+            if (this.securityLayer.hasSharedSecretKey()){
+                this.listening = true;
+                socketListenerThread.start();
+            }
+
             return this;
         }catch (SocketException e){
             System.out.println("Socket Error");
@@ -118,8 +123,6 @@ public class Connection {
 
     }
     private void handshake(){
-        SecurityLayer securityLayer = new SecurityLayer(); 
-
         new Thread(()->{
             while(!this.acknowledged){
                 sendData("HELLO".getBytes());
@@ -130,7 +133,7 @@ public class Connection {
                 }
             }
         }).start();
-        new Thread(()->{
+        Thread handshakeThread  = new Thread(()->{
             while(!this.acknowledged){
                 byte[] buffer = new byte[40];
                 try{
@@ -140,36 +143,33 @@ public class Connection {
                     if (incomingEvent.equals("HELLO")) { // if the other side says hello - you are now peer B
                         this.acknowledged = true;
                         sendData("ACK".getBytes());
-
-
-                        System.out.println("HELLO");
-                        
-                        sendData("AUTH_REQUEST".getBytes()); //starting authentication
+                        System.out.println("Recived HELLO , client is now peer B");
 
                     }else if(incomingEvent.equals("ACK")){ // if the other side acknowledges - you are now peer A
                         this.acknowledged = true;
-                        //do diffie helman
-                        System.out.println("ACK");
-                        
-                        sendData("AUTH_REQUEST".getBytes()); //starting authentication
-                        
+                        System.out.println("Recieved ACK , client is now peer a ");
+                        //listen for incoming otherpublic key
                     }
-                    else if (incomingEvent.equals("AUTH_REQUEST")){
-                        //if AUTH_REQUEST is received, send authentication key
-                        sendData(("AUTH " + SecurityLayer.SHARED_SECRET).getBytes());
-                    }
-                    
-                    else if (incomingEvent.startsWith("AUTH ")){
-                        //if authentication key is receieved, verify it
-                        String receivedKey = incomingEvent.split(" ")[1];
-                        if (securityLayer.authenticate(receivedKey)){
-                            this.acknowledged = true;
-                            System.out.println("Authenticated successfully");
+                    if (this.acknowledged){
+                        try{
+                            securityLayer.generatePrivateKey();
+                            byte[] clientPublicKey= securityLayer.createClientPublicKey().toByteArray();
+                            new Thread(()->{
+                                while(!securityLayer.hasSharedSecretKey()){ // while a shared secret key hasnt been created
+                                    sendData(clientPublicKey);// sends client public key
+                                }
+                            }).start();
+                            byte[] otherPublicKeyBuffer = new byte[400];
+                            DatagramPacket otherPublicKeyPacket = new DatagramPacket(otherPublicKeyBuffer, otherPublicKeyBuffer.length); // next thing to be recieved is the other peers public key
+                            socket.receive(otherPublicKeyPacket);
+                            securityLayer.createSharedSecret(new BigInteger(otherPublicKeyBuffer)); // finds and saves our shared secret.
+                            if (securityLayer.hasSharedSecretKey()){System.out.println("Handshake complete");}
+                        }catch (Exception e){
+                            System.out.println("Error creating shared secret");
+                            e.printStackTrace();
                         }
-                        else{
-                            System.out.println("Authentication failed. Closing the connection");
-                            socket.close();
-                        }                    
+
+                    }
                 }catch (IOException e){
                     System.out.println("Error receiving data");
                     e.printStackTrace();
@@ -177,7 +177,16 @@ public class Connection {
 
 
             }
-        }).start();
+        });
+        handshakeThread.start();
+        try {
+            handshakeThread.join();
+        }catch (InterruptedException e){
+            System.out.println("Error waiting for handshake thread");
+            e.printStackTrace();
+        }
+
+
 
 
 

@@ -1,4 +1,5 @@
 
+import javax.swing.*;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +10,7 @@ public class SecurityLayer {
     public static final String SHARED_SECRET = "SecureVoIPKey";
 
     private byte[] xorEncryptionKey = new byte[8];
-    private String hexPrime = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
+    private final String hexPrime = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
             "29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
             "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
             "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED" +
@@ -26,7 +27,12 @@ public class SecurityLayer {
             "BBE117577A615D6C770988C0BAD946E208E24FA074E5AB31" +
             "43DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF";
 
-    private  final BigInteger primeNumber = new BigInteger(hexPrime,16);
+    private final BigInteger primeNumber = new BigInteger(hexPrime,16); // prime number
+    private final short generator = 2; // primitive root
+    private BigInteger clientPrivateKey; // your private key youre going to create your public key with
+    private BigInteger sharedSecretKey;
+
+
 
     SecurityLayer(){
     }
@@ -50,9 +56,24 @@ public class SecurityLayer {
     public byte[] decrypt(byte[]encryptedData){
         return (xorFunction(encryptedData));
     }
-    public boolean authenticate(){
-        return SHARED_SECRET.equals(receivedKey);
 
+    public void generatePrivateKey(){
+        Random rand = new Random();
+        this.clientPrivateKey = new BigInteger(256,rand); // generate a 256bit integer.
+    }
+    public BigInteger createClientPublicKey(){ // Creates public key to be shared to other peer
+        return BigInteger.valueOf(generator).modPow(this.clientPrivateKey,primeNumber);
+    }
+
+    public void createSharedSecret(BigInteger otherPublicKey){
+        this.sharedSecretKey = otherPublicKey.modPow(this.clientPrivateKey,primeNumber);
+    }
+    public boolean hasSharedSecretKey(){
+        return this.sharedSecretKey != null;
+    }
+
+    public boolean authenticate(String receivedKey){
+        return SHARED_SECRET.equals(receivedKey);
     }
     
 }
