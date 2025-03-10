@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  *  VoIPLayer class is designed to process VOIP packets
  *
- * Author: Sibtain Syed
+ * Author: Sibtain Syed & Jay Groom
  */
 
 public class VoIPLayer {
@@ -17,22 +17,41 @@ public class VoIPLayer {
         this.securityLayer = securityLayer;
     }
 
+    // Encrypts and prepares the VoIP packet for transmission
     public byte[] processVoipPacket(byte[] packet) {
         int nextSequenceNumber = sequenceNumber.getAndIncrement();
+
+        // enccrypt and authenticate
         byte[] encryptedBlock = securityLayer.encryptAndAddAuthenticationToken(packet);
+        
+        // create ByteBuffer for packet (4 byte for sequence + encrypted data)
         ByteBuffer packetBuffer = ByteBuffer.allocate(encryptedBlock.length + 4);
         packetBuffer.putInt(nextSequenceNumber);
         packetBuffer.put(encryptedBlock);
+        
         return packetBuffer.array();
     }
 
+    // receives and processes an incoming VoIP packet
     public byte[] receivePacket(byte[] receivePacket) throws Exception {
         ByteBuffer packetBuffer = ByteBuffer.wrap(receivePacket);
-        int sequenceNumber = packetBuffer.getInt();
+
+        // extract sequence number
+        int receivedSequenceNumber = packetBuffer.getInt();
+
+        // Extract and decrypt raw data
         byte[] rawData = new byte[receivePacket.length - 4];
         packetBuffer.get(rawData);
 
-        return rawData;
+        // verify and decrypt packet
+        byte[] decryptedData = securityLayer.verifyAndDecrypt(rawData);
+        if (decryptedData == null) {
+            System.err.println("VoIPlayer: Packet failed authentication.");
+            return new byte[0]; // return an empty array in the authentication fails
+        }
+
+        System.out.println("VoIPLayer: Successfully received packet #" + receivedSequenceNumber);
+        return decryptedData;
 
     }
 
