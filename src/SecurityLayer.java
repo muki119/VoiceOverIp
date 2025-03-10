@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Random;
 
 public class SecurityLayer {
+    //shared static secret key for authentication
+    public static final String SHARED_SECRET = "SecureVoIPKey";
 
     private byte[] xorEncryptionKey = new byte[8];
     private String hexPrime = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
@@ -48,11 +50,10 @@ public class SecurityLayer {
     public byte[] decrypt(byte[]encryptedData){
         return (xorFunction(encryptedData));
     }
-    public void authenticate(){
+    public boolean authenticate(){
+        return SHARED_SECRET.equals(receivedKey);
 
     }
-    public void handshake(){
-        // send to
-    }
+    
 }
 
