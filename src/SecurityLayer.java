@@ -1,15 +1,11 @@
-
-import javax.swing.*;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
 public class SecurityLayer {
     //shared static secret key for authentication
     public static final String SHARED_SECRET = "SecureVoIPKey";
 
-    private byte[] xorEncryptionKey = new byte[8];
+    private byte[] xorEncryptionKey; // the key used for xOrEncryption
     private final String hexPrime = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1" +
             "29024E088A67CC74020BBEA63B139B22514A08798E3404DD" +
             "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245" +
@@ -64,9 +60,9 @@ public class SecurityLayer {
     public BigInteger createClientPublicKey(){ // Creates public key to be shared to other peer
         return BigInteger.valueOf(generator).modPow(this.clientPrivateKey,primeNumber);
     }
-
     public void createSharedSecret(BigInteger otherPublicKey){
         this.sharedSecretKey = otherPublicKey.modPow(this.clientPrivateKey,primeNumber);
+        this.xorEncryptionKey = this.sharedSecretKey.toByteArray();
     }
     public boolean hasSharedSecretKey(){
         return this.sharedSecretKey != null;

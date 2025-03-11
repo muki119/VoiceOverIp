@@ -3,12 +3,13 @@ import java.math.BigInteger;
 import java.net.*;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 public class Connection {
     private DatagramSocket socket;
     private InetAddress ip;
-    private int port;
-    private int portToBind;
+    private int port; // the port to send to
+    private int portToBind; // the port to listen to
     private boolean listening = false;
     private boolean acknowledged = false;
     private SecurityLayer securityLayer = new SecurityLayer();
@@ -37,47 +38,55 @@ public class Connection {
         return listening;
     }
 
+    public void sendEncrypted(byte[] data){
+        if(!securityLayer.hasSharedSecretKey()){
+            throw new RuntimeException("Connection Not Established");
+        }
+        byte[]encryptedData = securityLayer.encrypt(data);
+        this.sendData(encryptedData);
+    }
     public void sendData(byte[] data){
         // go through processes to send - full layers
-        new Thread(()->{
-            try{
-                DatagramPacket dataPacket = new DatagramPacket(data, data.length, this.ip, this.port);
-                socket.send(dataPacket);
-            }catch ( IOException e){
-                System.out.println("Error sending data");
-                e.printStackTrace();
-            }
-        }).start();
+        try{
+            DatagramPacket dataPacket = new DatagramPacket(data, data.length, this.ip, this.port);
+            socket.send(dataPacket);
+        }catch ( IOException e){
+            System.out.println("Error sending data");
+            e.printStackTrace();
+        }
     }
-    public Connection listen(){
-        // listen to incoming
+    public Connection listen(Consumer<byte[]> callback){ // for listening to incoming audio
         try{
             this.socket = new DatagramSocket(this.portToBind);
             Thread socketListenerThread = new Thread(()->{
                 System.out.println("Listening on port "+this.portToBind);
                 while (this.listening){
                     try{
-                        DatagramPacket incomingPacket = new DatagramPacket(new byte[40], 40);
+                        byte[] buffer = new byte[1024];
+                        DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
                         socket.receive(incomingPacket);
-                        // put through security layer
-                        System.out.println(new String(incomingPacket.getData()).trim());
+                        byte[] trimmedData = Arrays.copyOfRange(incomingPacket.getData(), 0, incomingPacket.getLength());
+                        byte[] plainTextData = securityLayer.decrypt(trimmedData);// put through security layer
+                        callback.accept(plainTextData); // pass to callback
+
                     }catch (IOException e){
                         System.out.println("Error receiving data");
                         e.printStackTrace();
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
                     }
                 }
                 
             });
             handshake();
-            if (this.securityLayer.hasSharedSecretKey()){
+            if (this.securityLayer.hasSharedSecretKey()){ // if security Layer can perform encryption/ decryption then allow incoming audio traffic
                 this.listening = true;
                 socketListenerThread.start();
             }
             return this;
         }catch (SocketException e){
             System.out.println("Socket Error");
-            System.out.println(e);
-            return null;
+            throw new RuntimeException(e);
         }
 
     }
@@ -147,7 +156,6 @@ public class Connection {
                     DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
                     socket.receive(incomingPacket);
                     String incomingEvent = new String(incomingPacket.getData()).trim();
-
                     if (incomingEvent.equals("HELLO")) { // if the other side says hello - you are now peer B
                         this.acknowledged = true;
                         sendData("ACK".getBytes());

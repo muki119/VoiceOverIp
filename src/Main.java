@@ -6,16 +6,13 @@ import java.util.Scanner;
 public class Main {
     public static void main(String[] args) {
         System.out.println("Hello world!");
-        Connection testConnection = new Connection("localhost",6000,2556).listen();
-//        SecurityLayer testLayer = new SecurityLayer();
-//        byte[] testBytes = new byte[512];
-//        Random rand = new Random();
-//        rand.nextBytes(testBytes);
-//        byte[] encryptedBytes = testLayer.encrypt(testBytes);
-//        byte[] decryptedBytes = testLayer.decrypt(encryptedBytes);
-//        boolean isWorking = Arrays.equals(decryptedBytes, testBytes);
-//        System.out.println(isWorking);
+        Connection testConnection = new Connection("localhost",2556,6000);
+        //instantiate voip layer
+        testConnection.listen((plainTextData)->{ // when the
+            //everytime audio comes in - use instance of voip layer to add data to audio buffer and play it.
+        });
         while(testConnection.isListening()){
+            //record audio block and send it on sendEncrypted(bytes)
             String text = new Scanner(System.in).nextLine()+'\n';
             testConnection.sendData(text.getBytes());
         }
