@@ -6,7 +6,7 @@ import java.util.Scanner;
 public class Main {
     public static void main(String[] args) {
         System.out.println("Hello world!");
-        Connection testConnection = new Connection("127.0.0.1",25565).listen();
+        Connection testConnection = new Connection("localhost",6000,2556).listen();
 //        SecurityLayer testLayer = new SecurityLayer();
 //        byte[] testBytes = new byte[512];
 //        Random rand = new Random();
@@ -18,7 +18,6 @@ public class Main {
         while(testConnection.isListening()){
             String text = new Scanner(System.in).nextLine()+'\n';
             testConnection.sendData(text.getBytes());
-
         }
     }
 }

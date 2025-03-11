@@ -8,6 +8,7 @@ public class Connection {
     private DatagramSocket socket;
     private InetAddress ip;
     private int port;
+    private int portToBind;
     private boolean listening = false;
     private boolean acknowledged = false;
     private SecurityLayer securityLayer = new SecurityLayer();
@@ -16,15 +17,21 @@ public class Connection {
         try{
             this.ip = InetAddress.getByName(ip);
             this.port = port;
+            this.portToBind = port;
             this.socket = new DatagramSocket();
             System.out.println("Sending to " + this.ip+" On port "+this.port);
 
         }catch (UnknownHostException e){
             System.out.println("Unknown Host \n Input a valid IP address");
+            throw new RuntimeException(e);
         }catch (SocketException e){
             System.out.println("Socket Error");
-            System.out.println(e);
+            throw new RuntimeException(e);
         }
+    }
+    public Connection(String ip, int port, int portToBind) {
+        this(ip, port);
+        this.portToBind = portToBind;
     }
     public boolean isListening(){
         return listening;
@@ -34,8 +41,6 @@ public class Connection {
         // go through processes to send - full layers
         new Thread(()->{
             try{
-                //transform data through layers.
-//                System.out.println("Sending to " + this.ip+" On port "+this.port+" "+new String(data));
                 DatagramPacket dataPacket = new DatagramPacket(data, data.length, this.ip, this.port);
                 socket.send(dataPacket);
             }catch ( IOException e){
@@ -47,13 +52,15 @@ public class Connection {
     public Connection listen(){
         // listen to incoming
         try{
-            this.socket = new DatagramSocket(port);
+            this.socket = new DatagramSocket(this.portToBind);
             Thread socketListenerThread = new Thread(()->{
-                System.out.println("Listening on port "+port);
+                System.out.println("Listening on port "+this.portToBind);
                 while (this.listening){
                     try{
                         DatagramPacket incomingPacket = new DatagramPacket(new byte[40], 40);
                         socket.receive(incomingPacket);
+                        // put through security layer
+                        System.out.println(new String(incomingPacket.getData()).trim());
                     }catch (IOException e){
                         System.out.println("Error receiving data");
                         e.printStackTrace();
@@ -66,7 +73,6 @@ public class Connection {
                 this.listening = true;
                 socketListenerThread.start();
             }
-
             return this;
         }catch (SocketException e){
             System.out.println("Socket Error");
@@ -122,6 +128,7 @@ public class Connection {
         }).start();
 
     }
+
     private void handshake(){
         new Thread(()->{
             while(!this.acknowledged){
@@ -140,35 +147,44 @@ public class Connection {
                     DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
                     socket.receive(incomingPacket);
                     String incomingEvent = new String(incomingPacket.getData()).trim();
+
                     if (incomingEvent.equals("HELLO")) { // if the other side says hello - you are now peer B
                         this.acknowledged = true;
                         sendData("ACK".getBytes());
-                        System.out.println("Recived HELLO , client is now peer B");
-
+                        System.out.println("Received HELLO , client is now peer B");
                     }else if(incomingEvent.equals("ACK")){ // if the other side acknowledges - you are now peer A
                         this.acknowledged = true;
-                        System.out.println("Recieved ACK , client is now peer a ");
-                        //listen for incoming otherpublic key
+                        System.out.println("Received ACK , client is now peer a ");
+                        //listen for incoming other public key
                     }
                     if (this.acknowledged){
                         try{
+
                             securityLayer.generatePrivateKey();
                             byte[] clientPublicKey= securityLayer.createClientPublicKey().toByteArray();
+
                             new Thread(()->{
                                 while(!securityLayer.hasSharedSecretKey()){ // while a shared secret key hasnt been created
                                     sendData(clientPublicKey);// sends client public key
+                                    try {
+                                        Thread.sleep(200);
+                                    } catch (InterruptedException e) {
+                                        throw new RuntimeException(e);
+                                    }
                                 }
                             }).start();
+
                             byte[] otherPublicKeyBuffer = new byte[400];
                             DatagramPacket otherPublicKeyPacket = new DatagramPacket(otherPublicKeyBuffer, otherPublicKeyBuffer.length); // next thing to be recieved is the other peers public key
-                            socket.receive(otherPublicKeyPacket);
-                            securityLayer.createSharedSecret(new BigInteger(otherPublicKeyBuffer)); // finds and saves our shared secret.
+                            socket.receive(otherPublicKeyPacket);// wait for key to be arrived
+                            byte[] trimmedOtherPublicKeyBuffer = Arrays.copyOf(otherPublicKeyPacket.getData(), otherPublicKeyPacket.getLength());
+                            securityLayer.createSharedSecret(new BigInteger(trimmedOtherPublicKeyBuffer)); // saves our shared secret.
                             if (securityLayer.hasSharedSecretKey()){System.out.println("Handshake complete");}
+
                         }catch (Exception e){
                             System.out.println("Error creating shared secret");
                             e.printStackTrace();
                         }
-
                     }
                 }catch (IOException e){
                     System.out.println("Error receiving data");

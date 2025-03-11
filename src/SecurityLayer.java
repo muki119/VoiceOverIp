@@ -30,7 +30,7 @@ public class SecurityLayer {
     private final BigInteger primeNumber = new BigInteger(hexPrime,16); // prime number
     private final short generator = 2; // primitive root
     private BigInteger clientPrivateKey; // your private key youre going to create your public key with
-    private BigInteger sharedSecretKey;
+    private BigInteger sharedSecretKey; // the final key that will be used for encryption
 
 
 
@@ -71,7 +71,6 @@ public class SecurityLayer {
     public boolean hasSharedSecretKey(){
         return this.sharedSecretKey != null;
     }
-
     public boolean authenticate(String receivedKey){
         return SHARED_SECRET.equals(receivedKey);
     }
