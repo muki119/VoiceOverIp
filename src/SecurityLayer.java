@@ -1,4 +1,14 @@
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.util.Arrays;
 import java.util.Random;
 
 public class SecurityLayer {
@@ -27,10 +37,19 @@ public class SecurityLayer {
     private final short generator = 2; // primitive root
     private BigInteger clientPrivateKey; // your private key youre going to create your public key with
     private BigInteger sharedSecretKey; // the final key that will be used for encryption
-
+    private final String preSharedKey ="d36a6190d328e9d8d6960cd9fc377648282723d304444fa75f711a75aa169689";
+    Mac Hmac ;
 
 
     SecurityLayer(){
+        try {
+            Hmac = Mac.getInstance("HmacSHA256");
+            Hmac.init(new SecretKeySpec(preSharedKey.getBytes(), "Hmac"));
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        } catch (InvalidKeyException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private byte[] xorFunction(byte[] data){
@@ -67,9 +86,28 @@ public class SecurityLayer {
     public boolean hasSharedSecretKey(){
         return this.sharedSecretKey != null;
     }
-    public boolean authenticate(String receivedKey){
-        return SHARED_SECRET.equals(receivedKey);
+    private byte[] createHash(byte[] data){
+        return Hmac.doFinal(data);
     }
+    public byte[] authenticate(byte[] incommingPacket){
+        System.out.println("Recieving incomming packet:"+Arrays.toString(incommingPacket));
+        byte[] packetHmac = new byte[32];
+        byte[] packetMessage = new byte[(incommingPacket.length-32)];  // the message to be hashed to see if the
+        ByteBuffer packetBuffer = ByteBuffer.wrap(incommingPacket);
+        packetBuffer.get(packetHmac).get(packetMessage); // get packetHmac
+        byte[] hashedMessage = createHash(packetMessage); // hash message to see if packet hmac is the same as the hashed message
+        boolean isHashValid = Arrays.equals(hashedMessage, packetHmac);
+        return isHashValid ? packetMessage : null;
+    }
+
+    public byte[] createAuthenticatedPacket(byte[] outgoingData){ // incpmming data has to be already encrypted if not in handshake
+        byte[] hmacData = createHash(outgoingData);
+        ByteBuffer outBuffer = ByteBuffer.allocate(hmacData.length+outgoingData.length);
+        outBuffer.put(hmacData).put(outgoingData).rewind();
+        return outBuffer.array();
+    }
+
+    ///
     
 }
 

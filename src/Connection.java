@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.net.*;
 import java.util.Arrays;
@@ -42,14 +43,16 @@ public class Connection {
         if(!securityLayer.hasSharedSecretKey()){
             throw new RuntimeException("Connection Not Established");
         }
-        byte[]encryptedData = securityLayer.encrypt(data);
+        byte[] encryptedData = securityLayer.encrypt(data);
         this.sendData(encryptedData);
     }
     public void sendData(byte[] data){
         // go through processes to send - full layers
         try{
-            DatagramPacket dataPacket = new DatagramPacket(data, data.length, this.ip, this.port);
+            byte[] authenticatedPacket = securityLayer.createAuthenticatedPacket(data);
+            DatagramPacket dataPacket = new DatagramPacket(authenticatedPacket, authenticatedPacket.length, this.ip, this.port);
             socket.send(dataPacket);
+            System.out.println("Sending data: "+Arrays.toString(authenticatedPacket));
         }catch ( IOException e){
             System.out.println("Error sending data");
             e.printStackTrace();
@@ -65,9 +68,17 @@ public class Connection {
                         byte[] buffer = new byte[1024];
                         DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
                         socket.receive(incomingPacket);
+
                         byte[] trimmedData = Arrays.copyOfRange(incomingPacket.getData(), 0, incomingPacket.getLength());
+                        byte[] authenticatedData = securityLayer.authenticate(trimmedData);
+
+                        if (authenticatedData == null){
+                            System.out.println("Invalid data received");
+                            continue;
+                        }
                         byte[] plainTextData = securityLayer.decrypt(trimmedData);// put through security layer
                         callback.accept(plainTextData); // pass to callback
+
 
                     }catch (IOException e){
                         System.out.println("Error receiving data");
@@ -155,7 +166,11 @@ public class Connection {
                 try{
                     DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
                     socket.receive(incomingPacket);
-                    String incomingEvent = new String(incomingPacket.getData()).trim();
+
+                    byte[] trimmedBuffer = Arrays.copyOf(incomingPacket.getData(),incomingPacket.getLength());
+                    byte[] authenticatedData = securityLayer.authenticate(trimmedBuffer);
+                    if (authenticatedData == null){continue;}
+                    String incomingEvent = new String(authenticatedData);
                     if (incomingEvent.equals("HELLO")) { // if the other side says hello - you are now peer B
                         this.acknowledged = true;
                         sendData("ACK".getBytes());
@@ -167,7 +182,6 @@ public class Connection {
                     }
                     if (this.acknowledged){
                         try{
-
                             securityLayer.generatePrivateKey();
                             byte[] clientPublicKey= securityLayer.createClientPublicKey().toByteArray();
 
@@ -182,11 +196,13 @@ public class Connection {
                                 }
                             }).start();
 
-                            byte[] otherPublicKeyBuffer = new byte[400];
+                            byte[] otherPublicKeyBuffer = new byte[512];
                             DatagramPacket otherPublicKeyPacket = new DatagramPacket(otherPublicKeyBuffer, otherPublicKeyBuffer.length); // next thing to be recieved is the other peers public key
                             socket.receive(otherPublicKeyPacket);// wait for key to be arrived
-                            byte[] trimmedOtherPublicKeyBuffer = Arrays.copyOf(otherPublicKeyPacket.getData(), otherPublicKeyPacket.getLength());
-                            securityLayer.createSharedSecret(new BigInteger(trimmedOtherPublicKeyBuffer)); // saves our shared secret.
+                            byte[] trimmedOtherPublicKeyBuffer = Arrays.copyOf(otherPublicKeyPacket.getData(),otherPublicKeyPacket.getLength());
+                            byte[] authenticatedOtherPublicKey = securityLayer.authenticate(trimmedOtherPublicKeyBuffer); //authenticate
+                            if (authenticatedOtherPublicKey == null){continue;} // if not authorized continue to next iteration
+                            securityLayer.createSharedSecret(new BigInteger(authenticatedOtherPublicKey)); // saves our shared secret.
                             if (securityLayer.hasSharedSecretKey()){System.out.println("Handshake complete");}
 
                         }catch (Exception e){

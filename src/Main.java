@@ -1,4 +1,5 @@
 import java.lang.reflect.Array;
+import java.security.PublicKey;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.Scanner;
@@ -14,7 +15,7 @@ public class Main {
         while(testConnection.isListening()){
             //record audio block and send it on sendEncrypted(bytes)
             String text = new Scanner(System.in).nextLine()+'\n';
-            testConnection.sendData(text.getBytes());
+            testConnection.sendEncrypted(text.getBytes());
         }
     }
 }
