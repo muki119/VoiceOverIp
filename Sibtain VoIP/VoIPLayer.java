@@ -43,15 +43,9 @@ public class VoIPLayer {
         byte[] rawData = new byte[receivePacket.length - 4];
         packetBuffer.get(rawData);
 
-        // verify and decrypt packet
-        byte[] decryptedData = securityLayer.verifyAndDecrypt(rawData);
-        if (decryptedData == null) {
-            System.err.println("VoIPlayer: Packet failed authentication.");
-            return new byte[0]; // return an empty array in the authentication fails
-        }
 
         System.out.println("VoIPLayer: Successfully received packet #" + receivedSequenceNumber);
-        return decryptedData;
+        return rawData;
 
     }
 
