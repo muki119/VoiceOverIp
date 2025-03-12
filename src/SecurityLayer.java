@@ -1,13 +1,9 @@
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -76,9 +72,15 @@ public class SecurityLayer {
         Random rand = new Random();
         this.clientPrivateKey = new BigInteger(256,rand); // generate a 256bit integer.
     }
+    //This will generate a constant private key that will be used by other socket channels
+    public void generateStaticPrivateKey(){
+        this.clientPrivateKey = new BigInteger("1357"); // generate a 256bit integer.
+    }
+
     public BigInteger createClientPublicKey(){ // Creates public key to be shared to other peer
         return BigInteger.valueOf(generator).modPow(this.clientPrivateKey,primeNumber);
     }
+
     public void createSharedSecret(BigInteger otherPublicKey){
         this.sharedSecretKey = otherPublicKey.modPow(this.clientPrivateKey,primeNumber);
         this.xorEncryptionKey = this.sharedSecretKey.toByteArray();
@@ -90,24 +92,26 @@ public class SecurityLayer {
         return Hmac.doFinal(data);
     }
     public byte[] authenticate(byte[] incommingPacket){
-        System.out.println("Recieving incomming packet:"+Arrays.toString(incommingPacket));
+        //System.out.println("Recieving incomming packet:"+Arrays.toString(incommingPacket));
         byte[] packetHmac = new byte[32];
         byte[] packetMessage = new byte[(incommingPacket.length-32)];  // the message to be hashed to see if the
         ByteBuffer packetBuffer = ByteBuffer.wrap(incommingPacket);
         packetBuffer.get(packetHmac).get(packetMessage); // get packetHmac
         byte[] hashedMessage = createHash(packetMessage); // hash message to see if packet hmac is the same as the hashed message
+
         boolean isHashValid = Arrays.equals(hashedMessage, packetHmac);
+        //System.out.println("isHashValid " + isHashValid);
         return isHashValid ? packetMessage : null;
     }
 
     public byte[] createAuthenticatedPacket(byte[] outgoingData){ // incpmming data has to be already encrypted if not in handshake
         byte[] hmacData = createHash(outgoingData);
+
         ByteBuffer outBuffer = ByteBuffer.allocate(hmacData.length+outgoingData.length);
         outBuffer.put(hmacData).put(outgoingData).rewind();
         return outBuffer.array();
     }
 
     ///
-    
-}
 
+}

@@ -4,10 +4,18 @@ import CMPC3M06.AudioRecorder;
 import javax.sound.sampled.LineUnavailableException;
 import java.io.IOException;
 
-public class Main {
+/**
+ * CMPC3M06 Coursework 1
+ * <p>
+ * MainDS2 class that will use ConnectionDS2 to test DatagramSocket2 channel
+ * <p>
+ * Author: Sibtain Syed
+ */
+
+public class MainDS2 {
     public static void main(String[] args) throws LineUnavailableException, IOException {
-        System.out.println("VOIP System Initializing");
-        Connection testConnection = new Connection("localhost",2556,6000);
+        System.out.println("VOIP System Initializing - DS2");
+        ConnectionDS2 testConnection = new ConnectionDS2("localhost",2556,6000);
         AudioPlayer player = new AudioPlayer();
         AudioRecorder recorder = new AudioRecorder();
         VoIPLayer voIPLayer = new VoIPLayer();
@@ -16,7 +24,8 @@ public class Main {
         testConnection.listen((voiceData)->{ // when the
             //everytime audio comes in - use instance of voip layer to add data to audio buffer and play it.
             try {
-                byte[] voipPacket = voIPLayer.processReceivePacket(voiceData);
+                //call the voip layer method that handles DatagramSocket2 issue
+                byte[] voipPacket = voIPLayer.processDS2ReceivePacket(voiceData);
                 if (voipPacket != null) {
                     player.playBlock(voipPacket);
                 }
