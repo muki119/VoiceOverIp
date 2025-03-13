@@ -2,8 +2,11 @@ import java.io.IOException;
 import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 public class Connection {
@@ -46,13 +49,13 @@ public class Connection {
         byte[] encryptedData = securityLayer.encrypt(data);
         this.sendData(encryptedData);
     }
+
     public void sendData(byte[] data){
         // go through processes to send - full layers
         try{
             byte[] authenticatedPacket = securityLayer.createAuthenticatedPacket(data);
             DatagramPacket dataPacket = new DatagramPacket(authenticatedPacket, authenticatedPacket.length, this.ip, this.port);
             socket.send(dataPacket);
-            System.out.println("Sending data: "+Arrays.toString(authenticatedPacket));
         }catch ( IOException e){
             System.out.println("Error sending data");
             e.printStackTrace();
@@ -76,7 +79,7 @@ public class Connection {
                             System.out.println("Invalid data received");
                             continue;
                         }
-                        byte[] plainTextData = securityLayer.decrypt(trimmedData);// put through security layer
+                        byte[] plainTextData = securityLayer.decrypt(authenticatedData);// put through security layer
                         callback.accept(plainTextData); // pass to callback
 
 
@@ -102,57 +105,22 @@ public class Connection {
 
     }
 
-    public void listenOnce(String event, Runnable onEvent){
-        byte[] eventBytes = event.getBytes();
-        byte[] buffer = new byte[eventBytes.length];
-        while(true) {
-            try {
-                DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
-                socket.receive(incomingPacket);
-                String incomingEvent = new String(incomingPacket.getData());
-                if (incomingEvent.equals(event)) {
-                    onEvent.run();
-                    return;
-                }
-
-            } catch (IOException e) {
-                System.out.println("Error receiving data");
-                e.printStackTrace();
-            }
-        }
-
+    private byte[] processPacket(byte[] data,int dataLength){
+        byte[] trimmedBuffer = Arrays.copyOf(data,dataLength);
+        byte[] authenticatedData = securityLayer.authenticate(trimmedBuffer);
+        return authenticatedData;
     }
-
-    public void listenFor(String event, Runnable func){
-        if(!this.socket.isBound()){
-            System.out.println("Socket is not bound!!");
-            return;
-        }
-        byte[] eventBytes = event.getBytes();
-        byte[] buffer = new byte[eventBytes.length];
-        new Thread(()-> {
-            while (true) {
-                try {
-                    DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
-                    socket.receive(incomingPacket);
-                    String incomingEvent = new String(incomingPacket.getData());
-                    if (incomingEvent.equals(event)) {
-                        func.run();
-                    }
-
-                } catch (IOException e) {
-                    System.out.println("Error receiving data");
-                    e.printStackTrace();
-                }
-            }
-        }).start();
-
+    private String extractEvent(final String Event,final byte[] data ){
+        byte[] eventBytes = Arrays.copyOfRange(data,0,Event.length());
+        return new String(eventBytes);
     }
-
     private void handshake(){
         new Thread(()->{
+            byte[] clientPublicKey = securityLayer.createClientPublicKey().toByteArray();
+            byte[] eventBuffer = "HELLO".getBytes();
+            ByteBuffer helloBuffer = ByteBuffer.allocate(clientPublicKey.length+eventBuffer.length).put(eventBuffer).put(clientPublicKey);
             while(!this.acknowledged){
-                sendData("HELLO".getBytes());
+                sendData(helloBuffer.array());
                 try {
                     Thread.sleep(200);
                 } catch (InterruptedException e) {
@@ -162,65 +130,42 @@ public class Connection {
         }).start();
         Thread handshakeThread  = new Thread(()->{
             while(!this.acknowledged){
-                byte[] buffer = new byte[40];
-                try{
-                    DatagramPacket incomingPacket = new DatagramPacket(buffer, buffer.length);
-                    socket.receive(incomingPacket);
-
-                    byte[] trimmedBuffer = Arrays.copyOf(incomingPacket.getData(),incomingPacket.getLength());
-                    byte[] authenticatedData = securityLayer.authenticate(trimmedBuffer);
-                    if (authenticatedData == null){continue;}
-                    String incomingEvent = new String(authenticatedData);
-                    if (incomingEvent.equals("HELLO")) { // if the other side says hello - you are now peer B
-                        this.acknowledged = true;
-                        sendData("ACK".getBytes());
-                        System.out.println("Received HELLO , client is now peer B");
-                    }else if(incomingEvent.equals("ACK")){ // if the other side acknowledges - you are now peer A
-                        this.acknowledged = true;
-                        System.out.println("Received ACK , client is now peer a ");
-                        //listen for incoming other public key
+                try {
+                    byte[] incomingDataBuffer = new byte[1024];
+                    DatagramPacket dataPacket = new DatagramPacket(incomingDataBuffer, incomingDataBuffer.length);
+                    socket.receive(dataPacket);
+                    byte[] processedPacket = processPacket(dataPacket.getData(), dataPacket.getLength());//package without the hmac
+                    if (processedPacket == null) {
+                        System.out.println("not auth");
+                        return;
                     }
-                    if (this.acknowledged){
-                        try{
-                            securityLayer.generatePrivateKey();
-                            byte[] clientPublicKey= securityLayer.createClientPublicKey().toByteArray();
-
-                            new Thread(()->{
-                                while(!securityLayer.hasSharedSecretKey()){ // while a shared secret key hasnt been created
-                                    sendData(clientPublicKey);// sends client public key
-                                    try {
-                                        Thread.sleep(200);
-                                    } catch (InterruptedException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                }
-                            }).start();
-
-                            byte[] otherPublicKeyBuffer = new byte[512];
-                            DatagramPacket otherPublicKeyPacket = new DatagramPacket(otherPublicKeyBuffer, otherPublicKeyBuffer.length); // next thing to be recieved is the other peers public key
-                            socket.receive(otherPublicKeyPacket);// wait for key to be arrived
-                            byte[] trimmedOtherPublicKeyBuffer = Arrays.copyOf(otherPublicKeyPacket.getData(),otherPublicKeyPacket.getLength());
-                            byte[] authenticatedOtherPublicKey = securityLayer.authenticate(trimmedOtherPublicKeyBuffer); //authenticate
-                            if (authenticatedOtherPublicKey == null){continue;} // if not authorized continue to next iteration
-                            securityLayer.createSharedSecret(new BigInteger(authenticatedOtherPublicKey)); // saves our shared secret.
-                            if (securityLayer.hasSharedSecretKey()){System.out.println("Handshake complete");}
-
-                        }catch (Exception e){
-                            System.out.println("Error creating shared secret");
-                            e.printStackTrace();
-                        }
+                    String ACK = "ACK",HELLO="HELLO";
+                    if(extractEvent(HELLO, processedPacket).equals(HELLO)){
+                        byte[] incommingData = Arrays.copyOfRange(processedPacket, HELLO.length(), processedPacket.length);
+                        byte[] publicKeyBytes = this.securityLayer.createClientPublicKey().toByteArray();
+                        this.securityLayer.createSharedSecret(new BigInteger(incommingData));
+                        ByteBuffer acknowledgementBuffer = ByteBuffer.allocate(ACK.getBytes().length + publicKeyBytes.length);
+                        acknowledgementBuffer.put(ACK.getBytes());
+                        acknowledgementBuffer.put(publicKeyBytes);
+                        sendData(acknowledgementBuffer.array());
+                        this.acknowledged = true;
+                        System.out.println(securityLayer.sharedSecretKey);
+                    } else if (extractEvent(ACK, processedPacket).equals(ACK)) {
+                        byte[] incommingData = Arrays.copyOfRange(processedPacket,ACK.length(), processedPacket.length);
+                        this.securityLayer.createSharedSecret(new BigInteger(incommingData));
+                        this.acknowledged = true;
+                        System.out.println(securityLayer.sharedSecretKey);
                     }
-                }catch (IOException e){
-                    System.out.println("Error receiving data");
+                }catch (Exception e){
                     e.printStackTrace();
                 }
-
-
             }
         });
-        handshakeThread.start();
+
         try {
+            handshakeThread.start();
             handshakeThread.join();
+            System.out.println("Done handshake");
         }catch (InterruptedException e){
             System.out.println("Error waiting for handshake thread");
             e.printStackTrace();
