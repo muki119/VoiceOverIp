@@ -1,22 +1,18 @@
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 
 public class Connection {
     private DatagramSocket socket;
-    private InetAddress ip;
-    private int port; // the port to send to
+    private final InetAddress ip;
+    private final int port; // the port to send to
     private int portToBind; // the port to listen to
     private boolean listening = false;
     private boolean acknowledged = false;
-    private SecurityLayer securityLayer = new SecurityLayer();
+    private final SecurityLayer securityLayer = new SecurityLayer();
 
     public Connection(String ip, int port) {
         try{
@@ -107,8 +103,7 @@ public class Connection {
 
     private byte[] processPacket(byte[] data,int dataLength){
         byte[] trimmedBuffer = Arrays.copyOf(data,dataLength);
-        byte[] authenticatedData = securityLayer.authenticate(trimmedBuffer);
-        return authenticatedData;
+        return securityLayer.authenticate(trimmedBuffer);
     }
     private String extractEvent(final String Event,final byte[] data ){
         byte[] eventBytes = Arrays.copyOfRange(data,0,Event.length());
@@ -129,6 +124,7 @@ public class Connection {
             }
         }).start();
         Thread handshakeThread  = new Thread(()->{
+            String ACK = "ACK",HELLO="HELLO";
             while(!this.acknowledged){
                 try {
                     byte[] incomingDataBuffer = new byte[1024];
@@ -139,11 +135,11 @@ public class Connection {
                         System.out.println("not auth");
                         return;
                     }
-                    String ACK = "ACK",HELLO="HELLO";
+                    
                     if(extractEvent(HELLO, processedPacket).equals(HELLO)){
-                        byte[] incommingData = Arrays.copyOfRange(processedPacket, HELLO.length(), processedPacket.length);
+                        byte[] incomingData = Arrays.copyOfRange(processedPacket, HELLO.length(), processedPacket.length);
                         byte[] publicKeyBytes = this.securityLayer.createClientPublicKey().toByteArray();
-                        this.securityLayer.createSharedSecret(new BigInteger(incommingData));
+                        this.securityLayer.createSharedSecret(new BigInteger(incomingData));
                         ByteBuffer acknowledgementBuffer = ByteBuffer.allocate(ACK.getBytes().length + publicKeyBytes.length);
                         acknowledgementBuffer.put(ACK.getBytes());
                         acknowledgementBuffer.put(publicKeyBytes);
@@ -151,8 +147,8 @@ public class Connection {
                         this.acknowledged = true;
                         System.out.println(securityLayer.sharedSecretKey);
                     } else if (extractEvent(ACK, processedPacket).equals(ACK)) {
-                        byte[] incommingData = Arrays.copyOfRange(processedPacket,ACK.length(), processedPacket.length);
-                        this.securityLayer.createSharedSecret(new BigInteger(incommingData));
+                        byte[] incomingData = Arrays.copyOfRange(processedPacket,ACK.length(), processedPacket.length);
+                        this.securityLayer.createSharedSecret(new BigInteger(incomingData));
                         this.acknowledged = true;
                         System.out.println(securityLayer.sharedSecretKey);
                     }

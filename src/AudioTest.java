@@ -18,7 +18,7 @@ import java.util.Iterator;
  * @author Philip Harding
  */
 public class AudioTest {
-    public static void main(String args[]) throws Exception {
+    public static void main(String[] args) throws Exception {
         //Vector used to store audio blocks (32ms/512bytes each)
         Vector<byte[]> voiceVector = new Vector<byte[]>();
 

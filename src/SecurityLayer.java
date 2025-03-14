@@ -35,7 +35,7 @@ public class SecurityLayer {
     private BigInteger clientPrivateKey; // your private key youre going to create your public key with
     public BigInteger sharedSecretKey; // the final key that will be used for encryption
     private final String preSharedKey ="d36a6190d328e9d8d6960cd9fc377648282723d304444fa75f711a75aa169689";
-    private Mac Hmac ;
+    private final Mac Hmac ;
 
 
     SecurityLayer(){
@@ -97,7 +97,6 @@ public class SecurityLayer {
         packetBuffer.get(packetHmac).get(packetMessage); // get packetHmac
         byte[] hashedMessage = createHash(packetMessage); // hash message to see if packet hmac is the same as the hashed message
         boolean isHashValid = Arrays.equals(hashedMessage, packetHmac);
-        System.out.println("Hash valid:"+isHashValid);
         return isHashValid ? packetMessage : null;
     }
 
